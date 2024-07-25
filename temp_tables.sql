@@ -5,40 +5,36 @@ USE sakila;
 --First, create a view that summarizes rental information for each customer.
 --The view should include the customer's ID, name, email address, and total number of rentals (rental_count).
 
-CREATE VIEW summarize AS
+CREATE VIEW customer_rental_summary AS
 SELECT 
-    c.customer_id, 
-    c.first_name, 
-    c.last_name, 
-    c.email, 
-    COUNT(r.rental_id) AS rental_count
+c.customer_id,
+CONCAT(c.first_name, ' ', c.last_name) AS customer_name,
+c.email,
+COUNT(*) AS rental_count
 FROM 
-    sakila.customer c
-LEFT JOIN 
-    sakila.rental r ON c.customer_id = r.customer_id
+customer AS c
+JOIN rental AS r ON c.customer_id = r.customer_id
 GROUP BY 
-    c.customer_id, 
-    c.first_name, 
-    c.last_name, 
-    c.email;
+c.customer_id
+ORDER BY 
+rental_count DESC;
 
 --2) Create a Temporary Table
 -- Next, create a Temporary Table that calculates the total amount paid by each customer (total_paid).
 -- The Temporary Table should use the rental summary view created in Step 1 to join with the payment table and calculate the total amount paid by each customer.
 
-CREATE TEMPORARY TABLE temp_total_paid_2 AS
+CREATE TEMPORARY TABLE customer_payment_summary AS (
 SELECT 
-    s.customer_id, 
-    COALESCE(SUM(p.amount), 0) AS total_paid
+crs.customer_id,
+SUM(p.amount) AS total_paid
 FROM 
-    summarize s
-LEFT JOIN 
-    sakila.payment p ON s.customer_id = p.customer_id
+customer_rental_summary AS crs
+JOIN rental AS r ON crs.customer_id = r.customer_id
+JOIN payment AS p ON r.rental_id = p.rental_id
 GROUP BY 
-    s.customer_id;
+crs.customer_id
+);
 
-
-SELECT * FROM temp_total_paid_2;
 
 --3) Create a CTE and the Customer Summary Report
 --Create a CTE that joins the rental summary View with the customer payment summary Temporary Table created in Step 2.
@@ -48,31 +44,22 @@ SELECT * FROM temp_total_paid_2;
 --which should include: customer name, email, rental_count, total_paid and average_payment_per_rental,
 --this last column is a derived column from total_paid and rental_count.
 
-WITH CustomerSummaryCTE AS (
-    SELECT 
-        s.first_name,
-        s.last_name,
-        s.email,
-        s.rental_count,
-        COALESCE(p.total_paid, 0) AS total_paid
-    FROM 
-        summarize s
-    LEFT JOIN 
-        temp_total_paid_2 p ON s.customer_id = p.customer_id
-)
+WITH customer_summary_report AS(
 SELECT 
-    first_name || ' ' || last_name AS customer_name,
-    email,
-    rental_count,
-    total_paid,
-    CASE 
-        WHEN rental_count > 0 THEN total_paid / rental_count
-        ELSE 0
-    END AS average_payment_per_rental
+crs.customer_name,
+crs.email,
+crs.rental_count,
+cps.total_paid
 FROM 
-    CustomerSummaryCTE;
-
-
+customer_rental_summary AS crs
+JOIN customer_payment_summary AS cps ON crs.customer_id = cps.customer_id)
+SELECT 
+*,
+total_paid / rental_count AS average_payment_per_rental
+FROM 
+customer_summary_report
+ORDER BY 
+rental_count DESC;
 
 
 
